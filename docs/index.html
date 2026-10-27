@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Paisa Floww</title>
+<style>
+:root{--bg:#0b1020;--card:#141b31;--tx:#eaf0ff;--mu:#a9b4d0;--pr:#a78bfa;--ok:#2dd4bf;--bad:#ff7a8a;--ln:#2a3354;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--bg:#f5f6fb;--card:#fff;--tx:#12172b;--mu:#4a5170;--pr:#6d4aff;--ok:#0e8f80;--bad:#d93a4f;--ln:#dfe2f0}}
+:root[data-theme="light"]{--bg:#f5f6fb;--card:#fff;--tx:#12172b;--mu:#4a5170;--pr:#6d4aff;--ok:#0e8f80;--bad:#d93a4f;--ln:#dfe2f0}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:12px 14px 96px}
+h1{font-size:22px;margin:6px 0 12px}h2{font-size:17px;margin:18px 0 8px}
+.card{background:var(--card);border-radius:20px;padding:16px;margin-bottom:12px}
+.big{font-size:32px;font-weight:800;letter-spacing:-.5px;overflow-wrap:anywhere}
+.mu{color:var(--mu);font-size:13px}.ok{color:var(--ok)}.bad{color:var(--bad)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--ln)}
+.row:last-child{border-bottom:0}.row>div:first-child{min-width:0;overflow-wrap:anywhere}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{min-height:48px;border-radius:14px;border:1px solid var(--ln);background:transparent;padding:0 16px;cursor:pointer}
+button.p{background:var(--pr);border-color:var(--pr);color:#10102a;font-weight:700}
+button.d{color:var(--bad)}button.s{min-height:40px;padding:0 12px}button.w{width:100%;margin-top:8px}
+input,select,textarea{width:100%;min-height:48px;border-radius:14px;border:1px solid var(--ln);background:var(--bg);padding:10px 12px;margin:4px 0 10px}
+label{font-size:13px;color:var(--mu)}textarea{min-height:110px;font-size:12px}
+.bar{height:8px;border-radius:6px;background:var(--ln);overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;border:0;border-radius:0;min-height:56px;font-size:13px;color:var(--mu)}nav button.on{color:var(--pr);font-weight:700}
+.err{color:var(--bad);font-size:14px;margin:4px 0}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="nav"></nav>
+<script>
+"use strict";
+var KEY = "paisafloww.v1";
+var S = null;
+try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) { S = null; }
+if (!S || !Array.isArray(S.tx) || !Array.isArray(S.loans) || !Array.isArray(S.sav)) {
+  S = { start: 0, goal: 500000, tx: [], loans: [], sav: [] };
+}
+var view = "home", msg = "", exportText = "";
+var EXP = ["Food","Rent / PG","Groceries","Travel","Mobile / Internet","Education","Shopping","Entertainment","Health","Personal care","Bills","Other"];
+var INC = ["Pocket money","Salary","Freelance","Refund","Gift","Other"];
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); return true; }
+  catch (e) { msg = "Could not save: browser storage is full or blocked."; return false; }
+}
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; }); }
+function today() { return new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function parse(s, zero) {
+  s = String(s).replace(/[,\u20B9\s]/g, "");
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(s)) return null;
+  var p = s.split("."), v = Number(p[0]) * 100 + Number(((p[1] || "") + "00").slice(0, 2));
+  if (v > 99999999999 || (v === 0 && !zero)) return null;
+  return v;
+}
+function fmt(p) {
+  var n = p < 0, a = Math.abs(p), r = Math.floor(a / 100);
+  return (n ? "-" : "") + "\u20B9" + r.toLocaleString("en-IN") + "." + String(a % 100).padStart(2, "0");
+}
+function dstr(d) { var x = new Date(d + "T00:00:00"); return x.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+function $(id) { return document.getElementById(id); }
+function val(id) { return $(id) ? $(id).value : ""; }
+
+function saved() { return S.sav.reduce(function (x, s) { return x + (s.k === "D" ? s.a : -s.a); }, 0); }
+function repaid(l) { return l.reps.reduce(function (x, r) { return x + r.a; }, 0); }
+function out(l) { return l.a - l.off - repaid(l); }
+function bal() {
+  var b = S.start;
+  S.tx.forEach(function (t) { b += t.t === "I" ? t.a : -t.a; });
+  S.loans.forEach(function (l) { b += l.dir === "B" ? l.a - repaid(l) : -l.a + repaid(l); });
+  return b - saved();
+}
+function month(prefix) {
+  var i = 0, e = 0;
+  S.tx.forEach(function (t) { if (t.d.indexOf(prefix) === 0) { if (t.t === "I") i += t.a; else e += t.a; } });
+  return { i: i, e: e };
+}
+function owed() {
+  var o = 0, f = 0;
+  S.loans.forEach(function (l) { if (l.dir === "B") o += out(l); else f += out(l); });
+  return { o: o, f: f };
+}
+
+function go(v) { view = v; msg = ""; render(); window.scrollTo(0, 0); }
+function note() { var m = msg; msg = ""; return m ? '<div class="err">' + esc(m) + "</div>" : ""; }
+
+function txRow(t, del) {
+  return '<div class="row"><div><b>' + esc(t.c) + '</b><div class="mu">' + dstr(t.d) + (t.n ? " \u00B7 " + esc(t.n) : "") + "</div></div>" +
+    '<div style="text-align:right"><b class="' + (t.t === "I" ? "ok" : "bad") + '">' + (t.t === "I" ? "+" : "-") + fmt(t.a) + "</b>" +
+    (del ? '<br><button class="s d" onclick="delTx(\'' + t.id + '\')">Delete</button>' : "") + "</div></div>";
+}
+function sorted() { return S.tx.slice().sort(function (a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }); }
+
+function vHome() {
+  var m = month(today().slice(0, 7)), o = owed(), sv = saved();
+  var pct = S.goal > 0 ? Math.min(100, Math.floor(sv * 100 / S.goal)) : 0;
+  var empty = !S.tx.length && !S.loans.length && !S.sav.length && !S.start;
+  return "<h1>Paisa Floww</h1>" + note() +
+    '<div class="card"><div class="mu">Available balance</div><div class="big ' + (bal() < 0 ? "bad" : "") + '">' + fmt(bal()) + '</div><div class="mu">Plus ' + fmt(sv) + " set aside for savings</div></div>" +
+    (empty ? '<div class="card"><b>Welcome.</b><div class="mu">Everything stays on this phone. Set your starting balance in More, then add your first expense.</div></div>' : "") +
+    '<div class="g2"><div class="card"><div class="mu">Income this month</div><b class="ok">' + fmt(m.i) + '</b></div><div class="card"><div class="mu">Spent this month</div><b class="bad">' + fmt(m.e) + "</b></div></div>" +
+    '<div class="card"><div class="mu">Net this month</div><b class="' + (m.i - m.e < 0 ? "bad" : "ok") + '">' + fmt(m.i - m.e) + "</b></div>" +
+    '<div class="g2"><div class="card" onclick="go(\'loans\')"><div class="mu">You owe friends</div><b class="bad">' + fmt(o.o) + '</b></div><div class="card" onclick="go(\'loans\')"><div class="mu">Friends owe you</div><b class="ok">' + fmt(o.f) + "</b></div></div>" +
+    '<div class="card" onclick="go(\'more\')"><div class="row"><b>Savings goal</b><span class="' + (sv >= S.goal ? "ok" : "mu") + '">' + (sv >= S.goal ? "Goal reached" : pct + "%") + '</span></div><div class="mu">' + fmt(sv) + " of " + fmt(S.goal) + '</div><div class="bar" style="margin-top:8px"><i style="width:' + pct + '%"></i></div></div>' +
+    "<h2>Recent</h2>" + '<div class="card">' + (S.tx.length ? sorted().slice(0, 5).map(function (t) { return txRow(t, false); }).join("") : '<div class="mu">No transactions yet.</div>') + "</div>" +
+    '<div class="g2"><button class="p" onclick="go(\'addE\')">Add expense</button><button class="p" onclick="go(\'addI\')">Add income</button></div>';
+}
+
+function vTx() {
+  return "<h1>Transactions</h1>" + note() + '<div class="g2"><button class="p" onclick="go(\'addE\')">Add expense</button><button class="p" onclick="go(\'addI\')">Add income</button></div><div class="card" style="margin-top:12px">' +
+    (S.tx.length ? sorted().map(function (t) { return txRow(t, true); }).join("") : '<div class="mu">Nothing here yet. Tap Add expense to start.</div>') + "</div>";
+}
+
+function vAdd(type) {
+  var cats = type === "I" ? INC : EXP;
+  return "<h1>" + (type === "I" ? "Add income" : "Add expense") + "</h1>" + note() + '<div class="card">' +
+    '<label>Amount</label><input id="f_a" inputmode="decimal" placeholder="0.00">' +
+    '<label>Category</label><select id="f_c">' + cats.map(function (c) { return "<option>" + esc(c) + "</option>"; }).join("") + "</select>" +
+    '<label>Date</label><input id="f_d" type="date" value="' + today() + '">' +
+    '<label>Note (optional)</label><input id="f_n" maxlength="200">' +
+    '<button class="p w" onclick="saveTx(\'' + type + '\')">Save</button><button class="w" onclick="go(\'tx\')">Cancel</button></div>';
+}
+function saveTx(type) {
+  var a = parse(val("f_a")), d = val("f_d");
+  if (a === null) { msg = "Enter a valid amount, for example 250 or 99.50."; return render(); }
+  if (!d) { msg = "Choose a date."; return render(); }
+  S.tx.push({ id: uid(), t: type, a: a, c: val("f_c"), d: d, n: val("f_n").trim() });
+  if (save()) go("tx"); else render();
+}
+function delTx(id) {
+  if (!confirm("Delete this transaction? It will be removed from your balance and reports.")) return;
+  S.tx = S.tx.filter(function (t) { return t.id !== id; }); save(); render();
+}
+
+function vLoans() {
+  var o = owed();
+  return "<h1>Friends\u2019 loans</h1>" + note() +
+    '<div class="g2"><div class="card"><div class="mu">You owe</div><b class="bad">' + fmt(o.o) + '</b></div><div class="card"><div class="mu">You are owed</div><b class="ok">' + fmt(o.f) + "</b></div></div>" +
+    '<div class="g2"><button class="p" onclick="go(\'addB\')">I borrowed</button><button class="p" onclick="go(\'addL\')">I lent</button></div><div class="card" style="margin-top:12px">' +
+    (S.loans.length ? S.loans.slice().reverse().map(function (l) {
+      return '<div class="row" onclick="go(\'loan:' + l.id + '\')"><div><b>' + esc(l.name) + '</b><div class="mu">' + (l.dir === "B" ? "You borrowed" : "You lent") + " " + fmt(l.a) + (l.due ? " \u00B7 due " + dstr(l.due) : "") + '</div></div><div style="text-align:right"><b>' + fmt(out(l)) + '</b><div class="mu">' + (out(l) <= 0 ? "Paid" : l.due && l.due < today() ? "Overdue" : "Active") + "</div></div></div>";
+    }).join("") : '<div class="mu">No loans yet.</div>') + "</div>";
+}
+function vAddLoan(dir) {
+  return "<h1>" + (dir === "B" ? "Money I borrowed" : "Money I lent") + "</h1>" + note() + '<div class="card">' +
+    '<label>Friend\u2019s name</label><input id="l_n" maxlength="60"><label>Amount</label><input id="l_a" inputmode="decimal" placeholder="0.00">' +
+    '<label>Date</label><input id="l_d" type="date" value="' + today() + '"><label>Due date (optional)</label><input id="l_u" type="date">' +
+    '<label>Reason or note (optional)</label><input id="l_r" maxlength="200">' +
+    '<button class="p w" onclick="saveLoan(\'' + dir + '\')">Save loan</button><button class="w" onclick="go(\'loans\')">Cancel</button></div>';
+}
+function saveLoan(dir) {
+  var n = val("l_n").trim(), a = parse(val("l_a")), d = val("l_d"), u = val("l_u");
+  if (!n) { msg = "Enter your friend\u2019s name."; return render(); }
+  if (a === null) { msg = "Enter a valid amount."; return render(); }
+  if (!d) { msg = "Choose a date."; return render(); }
+  if (u && u < d) { msg = "Due date can\u2019t be before the loan date."; return render(); }
+  S.loans.push({ id: uid(), name: n, dir: dir, a: a, d: d, due: u, note: val("l_r").trim(), off: 0, why: "", reps: [] });
+  if (save()) go("loans"); else render();
+}
+function findLoan(id) { return S.loans.filter(function (l) { return l.id === id; })[0]; }
+function vLoan(id) {
+  var l = findLoan(id);
+  if (!l) return '<div class="card">Loan not found.</div><button class="w" onclick="go(\'loans\')">Back</button>';
+  var b = l.dir === "B", o = out(l);
+  return "<h1>" + esc(l.name) + "</h1>" + note() + '<div class="card"><div class="mu">' + (b ? "You borrowed" : "You lent") + " \u00B7 " + dstr(l.d) + '</div><div class="mu">Outstanding</div><div class="big ' + (o <= 0 ? "ok" : b ? "bad" : "ok") + '">' + fmt(o) + "</div>" +
+    '<div class="mu">' + (o <= 0 ? "PAID" : "Original " + fmt(l.a) + " \u00B7 " + (b ? "repaid " : "received ") + fmt(repaid(l))) + "</div>" +
+    (l.due ? '<div class="mu">Due ' + dstr(l.due) + "</div>" : "") + (l.note ? '<div class="mu">' + esc(l.note) + "</div>" : "") +
+    (l.off > 0 ? '<div class="mu">Settled without full repayment (' + fmt(l.off) + "). Reason: " + esc(l.why) + "</div>" : "") + "</div>" +
+    (o > 0 ? '<div class="card"><b>Record repayment</b><label>Amount</label><input id="r_a" inputmode="decimal" placeholder="0.00"><label>Date</label><input id="r_d" type="date" value="' + today() + '"><button class="p w" onclick="addRep(\'' + id + '\')">Save repayment</button>' +
+      '<hr style="border:0;border-top:1px solid var(--ln);margin:14px 0"><label>Mark as settled (needs a reason)</label><input id="r_w" maxlength="200" placeholder="Reason"><button class="w" onclick="settle(\'' + id + '\')">Mark as settled</button></div>' : "") +
+    "<h2>Repayment history</h2><div class=\"card\">" + (l.reps.length ? l.reps.map(function (r) {
+      return '<div class="row"><div><b>' + fmt(r.a) + '</b><div class="mu">' + dstr(r.d) + '</div></div><button class="s d" onclick="delRep(\'' + id + "','" + r.id + '\')">Delete</button></div>';
+    }).join("") : '<div class="mu">No repayments yet.</div>') + "</div>" +
+    '<button class="w d" onclick="delLoan(\'' + id + '\')">Delete loan and history</button><button class="w" onclick="go(\'loans\')">Back</button>';
+}
+function addRep(id) {
+  var l = findLoan(id), a = parse(val("r_a")), d = val("r_d");
+  if (a === null) { msg = "Enter a valid amount."; return render(); }
+  if (a > out(l)) { msg = "That is more than the outstanding " + fmt(out(l)) + "."; return render(); }
+  l.reps.push({ id: uid(), a: a, d: d || today() }); save(); render();
+}
+function delRep(id, rid) {
+  if (!confirm("Delete this repayment? The outstanding balance will go up.")) return;
+  var l = findLoan(id); l.reps = l.reps.filter(function (r) { return r.id !== rid; }); save(); render();
+}
+function settle(id) {
+  var l = findLoan(id), w = val("r_w").trim();
+  if (!w) { msg = "Enter a reason for settling."; return render(); }
+  if (!confirm("Close the remaining " + fmt(out(l)) + " WITHOUT recording a repayment? Your balance will not change.")) return;
+  l.off += out(l); l.why = w; save(); render();
+}
+function delLoan(id) {
+  if (!confirm("Delete this loan AND all its repayments? Your balance will change. This cannot be undone.")) return;
+  S.loans = S.loans.filter(function (l) { return l.id !== id; }); save(); go("loans");
+}
+
+function vReports() {
+  var pre = today().slice(0, 7), by = {}, tot = 0;
+  S.tx.forEach(function (t) { if (t.t === "E" && t.d.indexOf(pre) === 0) { by[t.c] = (by[t.c] || 0) + t.a; tot += t.a; } });
+  var keys = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; });
+  var rows = [], k = new Date();
+  for (var i = 5; i >= 0; i--) {
+    var x = new Date(k.getFullYear(), k.getMonth() - i, 1), p = x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0"), m = month(p);
+    rows.push('<div class="row"><span>' + x.toLocaleDateString("en-IN", { month: "short", year: "numeric" }) + '</span><span class="mu">In ' + fmt(m.i) + " \u00B7 Out " + fmt(m.e) + "</span></div>");
+  }
+  return "<h1>Reports</h1><h2>Spending by category, this month</h2><div class=\"card\">" +
+    (keys.length ? keys.map(function (c) { return '<div class="row"><span>' + esc(c) + "</span><b>" + fmt(by[c]) + '</b></div><div class="bar"><i style="width:' + Math.round(by[c] * 100 / tot) + '%"></i></div>'; }).join("") : '<div class="mu">No expenses this month.</div>') +
+    '</div><h2>Last 6 months</h2><div class="card">' + rows.join("") + '</div><div class="mu">Loans, repayments and savings transfers are never counted as income or spending.</div>';
+}
+
+function vMore() {
+  var sv = saved();
+  return "<h1>Savings and settings</h1>" + note() +
+    '<div class="card"><b>Savings goal</b><div class="mu">Saved ' + fmt(sv) + " of " + fmt(S.goal) + ". Remaining " + fmt(Math.max(0, S.goal - sv)) + '</div><div class="bar" style="margin:8px 0"><i style="width:' + (S.goal > 0 ? Math.min(100, Math.floor(sv * 100 / S.goal)) : 0) + '%"></i></div>' +
+    '<label>Amount</label><input id="s_a" inputmode="decimal" placeholder="0.00"><div class="g2"><button class="p" onclick="saving(\'D\')">Add to savings</button><button onclick="saving(\'W\')">Withdraw</button></div>' +
+    '<label style="display:block;margin-top:12px">Change target</label><input id="s_g" inputmode="decimal" value="' + (S.goal / 100).toFixed(2) + '"><button class="w" onclick="setGoal()">Update target</button></div>' +
+    '<div class="card"><b>Starting balance</b><div class="mu">Money you had before you began recording here.</div><input id="s_s" inputmode="decimal" value="' + (S.start / 100).toFixed(2) + '"><button class="w" onclick="setStart()">Save starting balance</button></div>' +
+    '<div class="card"><b>Backup and restore</b><div class="mu">Your data lives only in this browser on this phone. Clearing browser data, uninstalling the browser or resetting the phone erases it. Back up often.</div>' +
+    '<button class="p w" onclick="doExport()">Create backup text</button>' +
+    (exportText ? '<textarea id="b_t" readonly>' + esc(exportText) + '</textarea><button class="w" onclick="copyB()">Copy backup</button><div class="mu">Paste it into Google Keep, Notes or an email to yourself. It is not encrypted.</div>' : "") +
+    '<label style="display:block;margin-top:12px">Restore: paste a backup here</label><textarea id="b_r"></textarea><button class="w d" onclick="doRestore()">Restore (replaces all data)</button></div>' +
+    '<div class="card mu" id="persist">Storage protection: checking\u2026</div>';
+}
+function saving(k) {
+  var a = parse(val("s_a"));
+  if (a === null) { msg = "Enter a valid amount."; return render(); }
+  if (k === "D" && a > bal()) { msg = "That is more than your available balance of " + fmt(bal()) + "."; return render(); }
+  if (k === "W" && a > saved()) { msg = "That is more than your savings of " + fmt(saved()) + "."; return render(); }
+  S.sav.push({ id: uid(), k: k, a: a, d: today() }); save(); render();
+}
+function setGoal() { var a = parse(val("s_g")); if (a === null) { msg = "Enter a valid target."; return render(); } S.goal = a; save(); render(); }
+function setStart() { var a = parse(val("s_s"), true); if (a === null) { msg = "Enter a valid amount."; return render(); } S.start = a; save(); render(); }
+function doExport() { exportText = JSON.stringify({ format: "paisafloww-web-backup", version: 1, exportedAt: new Date().toISOString(), data: S }); render(); }
+function copyB() {
+  var t = $("b_t"); t.select();
+  try { navigator.clipboard.writeText(exportText).then(function () { alert("Copied."); }, function () { document.execCommand("copy"); }); }
+  catch (e) { try { document.execCommand("copy"); } catch (e2) { } }
+}
+function okInt(n) { return typeof n === "number" && isFinite(n) && Math.floor(n) === n && n > 0 && n <= 99999999999; }
+function validBackup(d) {
+  if (!d || !Array.isArray(d.tx) || !Array.isArray(d.loans) || !Array.isArray(d.sav)) return "Missing lists.";
+  if (!(typeof d.start === "number" && d.start >= 0 && Math.floor(d.start) === d.start) || !okInt(d.goal)) return "Invalid starting balance or goal.";
+  for (var i = 0; i < d.tx.length; i++) { var t = d.tx[i]; if (!t || (t.t !== "I" && t.t !== "E") || !okInt(t.a) || typeof t.c !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(t.d)) return "A transaction is invalid."; }
+  for (var j = 0; j < d.loans.length; j++) {
+    var l = d.loans[j];
+    if (!l || (l.dir !== "B" && l.dir !== "L") || !okInt(l.a) || typeof l.name !== "string" || !Array.isArray(l.reps) || typeof l.off !== "number" || l.off < 0) return "A loan is invalid.";
+    var s = l.off; for (var k = 0; k < l.reps.length; k++) { if (!okInt(l.reps[k].a)) return "A repayment is invalid."; s += l.reps[k].a; }
+    if (s > l.a) return "Repayments for " + l.name + " exceed the loan.";
+  }
+  var sv = 0; for (var m = 0; m < d.sav.length; m++) { var e = d.sav[m]; if (!e || (e.k !== "D" && e.k !== "W") || !okInt(e.a)) return "A savings entry is invalid."; sv += e.k === "D" ? e.a : -e.a; }
+  if (sv < 0) return "Savings add up to less than zero.";
+  return "";
+}
+function doRestore() {
+  var raw = val("b_r").trim(), o;
+  try { o = JSON.parse(raw); } catch (e) { msg = "That is not a valid backup. Nothing was changed."; return render(); }
+  if (!o || o.format !== "paisafloww-web-backup" || !o.data) { msg = "That is not a Paisa Floww backup. Nothing was changed."; return render(); }
+  var bad = validBackup(o.data);
+  if (bad) { msg = "Restore cancelled: " + bad + " Nothing was changed."; return render(); }
+  var d = o.data;
+  if (!confirm("This backup has " + d.tx.length + " transactions, " + d.loans.length + " loans and " + d.sav.length + " savings entries.\n\nReplace ALL current data with it?")) return;
+  S = { start: d.start, goal: d.goal, tx: d.tx, loans: d.loans, sav: d.sav };
+  if (save()) { msg = ""; go("home"); } else render();
+}
+
+var TABS = [["home", "Home"], ["tx", "Money"], ["loans", "Loans"], ["reports", "Reports"], ["more", "More"]];
+function render() {
+  var h;
+  if (view === "home") h = vHome(); else if (view === "tx") h = vTx(); else if (view === "addE") h = vAdd("E"); else if (view === "addI") h = vAdd("I");
+  else if (view === "loans") h = vLoans(); else if (view === "addB") h = vAddLoan("B"); else if (view === "addL") h = vAddLoan("L");
+  else if (view.indexOf("loan:") === 0) h = vLoan(view.slice(5)); else if (view === "reports") h = vReports(); else h = vMore();
+  $("app").innerHTML = h;
+  var cur = view.indexOf("loan") === 0 || view === "addB" || view === "addL" ? "loans" : view === "addE" || view === "addI" ? "tx" : view;
+  $("nav").innerHTML = TABS.map(function (t) { return '<button class="' + (cur === t[0] ? "on" : "") + '" onclick="go(\'' + t[0] + '\')">' + t[1] + "</button>"; }).join("");
+  var p = $("persist");
+  if (p) {
+    try {
+      if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().then(function (g) { p.textContent = g ? "Storage protection: on. The browser will not clear this data automatically." : "Storage protection: not granted. The browser may clear data if the phone runs low on space. Back up regularly."; });
+      } else { p.textContent = "Storage protection is not available here. Back up regularly."; }
+    } catch (e) { p.textContent = "Storage protection is not available here. Back up regularly."; }
+  }
+}
+render();
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(function () {}); }
+</script>
+</body>
+</html>
